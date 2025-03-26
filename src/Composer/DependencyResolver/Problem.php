@@ -129,6 +129,7 @@ class Problem
                 return implode('-', $rule->getLiterals());
         }
 
+        // @phpstan-ignore deadCode.unreachable
         throw new \LogicException('Unknown rule type: '.$rule->getReason());
     }
 
@@ -149,6 +150,7 @@ class Problem
                 return 0;
         }
 
+        // @phpstan-ignore deadCode.unreachable
         throw new \LogicException('Unknown rule type: '.$rule->getReason());
     }
 
@@ -280,7 +282,8 @@ class Problem
                 if (null === $version) {
                     $providersStr = self::getProvidersList($repositorySet, $packageName, 5);
                     if ($providersStr !== null) {
-                        $providersStr = "\n\n      Alternatively you can require one of these packages that provide the extension (or parts of it):\n$providersStr";
+                        $providersStr = "\n\n      Alternatively you can require one of these packages that provide the extension (or parts of it):\n".
+                            "      <warning>Keep in mind that the suggestions are automated and may not be valid or safe to use</warning>\n$providersStr";
                     }
 
                     if (extension_loaded($ext)) {
@@ -306,7 +309,8 @@ class Problem
 
                 $providersStr = self::getProvidersList($repositorySet, $packageName, 5);
                 if ($providersStr !== null) {
-                    $providersStr = "\n\n      Alternatively you can require one of these packages that provide the library (or parts of it):\n$providersStr";
+                    $providersStr = "\n\n      Alternatively you can require one of these packages that provide the library (or parts of it):\n".
+                    "      <warning>Keep in mind that the suggestions are automated and may not be valid or safe to use</warning>\n$providersStr";
                 }
 
                 return ["- Root composer.json requires linked library ".$packageName.self::constraintToText($constraint).' but ', 'it has the wrong version installed or is missing from your system, make sure to load the extension providing it.'.$providersStr];
