@@ -230,8 +230,10 @@ php composer.phar update vendor/package:2.0.1 vendor/package2:3.0.*
 * **--prefer-lowest:** Prefer lowest versions of dependencies. Useful for testing minimal
   versions of requirements, generally used with `--prefer-stable`. Can also be set via the
   COMPOSER_PREFER_LOWEST=1 env var.
-* **--minimal-changes (-m):** During a partial update with `-w`/`-W`, only perform absolutely necessary
-  changes to transitive dependencies. Can also be set via the COMPOSER_MINIMAL_CHANGES=1 env var.
+* **--minimal-changes (-m):** Only perform absolutely necessary changes to dependencies.
+  If packages cannot be kept at their currently locked version they are updated. For partial
+  updates the allow-listed packages are always updated fully. Can also be set via
+  the COMPOSER_MINIMAL_CHANGES=1 env var.
 * **--patch-only:** Only allow patch version updates for currently installed dependencies.
 * **--interactive:** Interactive interface with autocompletion to select the packages to update.
 * **--root-reqs:** Restricts the update to your first degree dependencies.
@@ -1271,6 +1273,11 @@ defaults to 12 and must be between 1 and 50. If your proxy has issues with
 concurrency maybe you want to lower this. Increasing it should generally not result
 in performance gains.
 
+### COMPOSER_MAX_PARALLEL_PROCESSES
+
+Set to an integer to configure how many processes can be executed in parallel.
+This defaults to 10 and must be between 1 and 50.
+
 ### COMPOSER_IPRESOLVE
 
 Set to `4` or `6` to force IPv4 or IPv6 DNS resolution. This only works when the
@@ -1338,5 +1345,14 @@ If set to `1`, it is the equivalent of passing the `--with-dependencies` option 
 
 If set to `1`, it is the equivalent of passing the `--with-all-dependencies` option to
 `update`, `require` or `remove`.
+
+### SHELL_VERBOSITY
+
+Since Composer uses [symfony/console](https://github.com/symfony/console),
+you can define the [verbosity level](https://symfony.com/doc/current/console/verbosity.html).
+`SHELL_VERBOSITY=-1` to hide the output of Composer
+(this is equivalent to using the CLI option `--quiet`).
+Please note that this will apply to every tool that rely on `symfony/console`,
+you can set `SHELL_VERBOSITY=0` after the calls to Composer in order to restore the default verbosity level.
 
 &larr; [Libraries](02-libraries.md)  |  [Schema](04-schema.md) &rarr;
