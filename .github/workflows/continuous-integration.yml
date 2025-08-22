@@ -32,6 +32,7 @@ jobs:
           - "8.1"
           - "8.2"
           - "8.3"
+          - "8.4"
         dependencies: [locked]
         os: [ubuntu-latest]
         experimental: [false]
@@ -44,23 +45,23 @@ jobs:
             dependencies: lowest
             os: ubuntu-latest
             experimental: false
-          - php-version: "8.3"
+          - php-version: "8.4"
             dependencies: highest
             os: ubuntu-latest
             experimental: false
-          - php-version: "8.3"
+          - php-version: "8.4"
             os: windows-latest
             dependencies: locked
             experimental: false
-          - php-version: "8.3"
+          - php-version: "8.4"
             os: macos-latest
             dependencies: locked
             experimental: false
-          - php-version: "8.4"
+          - php-version: "8.5"
             dependencies: lowest-ignore
             os: ubuntu-latest
             experimental: true
-          - php-version: "8.4"
+          - php-version: "8.5"
             dependencies: highest-ignore
             os: ubuntu-latest
             experimental: true
@@ -90,9 +91,9 @@ jobs:
         if: "contains(matrix.dependencies, 'highest') || contains(matrix.dependencies, 'lowest')"
         run: "composer config platform --unset"
 
-      - name: "Allow alpha releases for latest-deps builds to catch problems earlier"
+      - name: "Allow dev releases for latest-deps builds to catch problems earlier"
         if: "contains(matrix.dependencies, 'highest')"
-        run: "composer config minimum-stability alpha"
+        run: "composer config minimum-stability dev"
 
       - name: "Update dependencies from composer.json using composer binary provided by system"
         if: "contains(matrix.dependencies, 'highest') || contains(matrix.dependencies, 'lowest')"
