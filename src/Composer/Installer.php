@@ -12,6 +12,7 @@
 
 namespace Composer;
 
+use Composer\Advisory\AuditConfig;
 use Composer\Autoload\AutoloadGenerator;
 use Composer\Console\GithubActionError;
 use Composer\DependencyResolver\DefaultPolicy;
@@ -23,6 +24,7 @@ use Composer\DependencyResolver\Operation\UninstallOperation;
 use Composer\DependencyResolver\PoolOptimizer;
 use Composer\DependencyResolver\Pool;
 use Composer\DependencyResolver\Request;
+use Composer\DependencyResolver\SecurityAdvisoryPoolFilter;
 use Composer\DependencyResolver\Solver;
 use Composer\DependencyResolver\SolverProblemsException;
 use Composer\DependencyResolver\PolicyInterface;
@@ -178,6 +180,8 @@ class Installer
     protected $errorOnAudit = false;
     /** @var Auditor::FORMAT_* */
     protected $auditFormat = Auditor::FORMAT_SUMMARY;
+    /** @var AuditConfig|null */
+    private $auditConfig = null;
     /** @var list<string> */
     private $ignoredTypes = ['php-ext', 'php-ext-zend'];
     /** @var list<string>|null */
@@ -415,7 +419,9 @@ class Installer
             gc_enable();
         }
 
-        if ($this->audit) {
+        $auditConfig = $this->getAuditConfig();
+
+        if ($auditConfig->audit) {
             if ($this->update && !$this->install) {
                 $packages = $lockedRepository->getCanonicalPackages();
                 $target = 'locked';
@@ -431,9 +437,7 @@ class Installer
                         $repoSet->addRepository($repo);
                     }
 
-                    $auditConfig = $this->config->get('audit');
-
-                    return $auditor->audit($this->io, $repoSet, $packages, $this->auditFormat, true, $auditConfig['ignore'] ?? [], $auditConfig['abandoned'] ?? Auditor::ABANDONED_FAIL) > 0 && $this->errorOnAudit ? self::ERROR_AUDIT_FAILED : 0;
+                    return $auditor->audit($this->io, $repoSet, $packages, $auditConfig->auditFormat, true, $auditConfig->ignoreListForAudit, $auditConfig->auditAbandoned, $auditConfig->ignoreSeverityForAudit, $auditConfig->ignoreUnreachable, $auditConfig->ignoreAbandonedForAudit) > 0 && $this->errorOnAudit ? self::ERROR_AUDIT_FAILED : 0;
                 } catch (TransportException $e) {
                     $this->io->error('Failed to audit '.$target.' packages.');
                     if ($this->io->isVerbose()) {
@@ -498,7 +502,7 @@ class Installer
             $request->setUpdateAllowList($this->updateAllowList, $this->updateAllowTransitiveDependencies);
         }
 
-        $pool = $repositorySet->createPool($request, $this->io, $this->eventDispatcher, $this->createPoolOptimizer($policy), $this->ignoredTypes, $this->allowedTypes);
+        $pool = $repositorySet->createPool($request, $this->io, $this->eventDispatcher, $this->createPoolOptimizer($policy), $this->ignoredTypes, $this->allowedTypes, $this->createSecurityAuditPoolFilter());
 
         $this->io->writeError('<info>Updating dependencies</info>');
 
@@ -772,7 +776,7 @@ class Installer
             }
             unset($rootRequires, $link);
 
-            $pool = $repositorySet->createPool($request, $this->io, $this->eventDispatcher, null, $this->ignoredTypes, $this->allowedTypes);
+            $pool = $repositorySet->createPool($request, $this->io, $this->eventDispatcher, null, $this->ignoredTypes, $this->allowedTypes, null);
 
             // solve dependencies
             $solver = new Solver($policy, $pool, $this->io);
@@ -1103,6 +1107,26 @@ class Installer
         }
 
         return new PoolOptimizer($policy);
+    }
+
+    private function getAuditConfig(): AuditConfig
+    {
+        if (null === $this->auditConfig) {
+            $this->auditConfig = AuditConfig::fromConfig($this->config, $this->audit, $this->auditFormat);
+        }
+
+        return $this->auditConfig;
+    }
+
+    private function createSecurityAuditPoolFilter(): ?SecurityAdvisoryPoolFilter
+    {
+        $auditConfig = $this->getAuditConfig();
+
+        if ($auditConfig->blockInsecure) {
+            return new SecurityAdvisoryPoolFilter(new Auditor(), $auditConfig);
+        }
+
+        return null;
     }
 
     /**
@@ -1472,10 +1496,13 @@ class Installer
 
     /**
      * Should an audit be run after installation is complete?
+     *
+     * @deprecated Use setAuditConfig instead of calling this
      */
     public function setAudit(bool $audit): self
     {
         $this->audit = $audit;
+        $this->auditConfig = null; // Invalidate cached config
 
         return $this;
     }
@@ -1494,10 +1521,23 @@ class Installer
      * What format should be used for audit output?
      *
      * @param Auditor::FORMAT_* $auditFormat
+     *
+     * @deprecated Use setAuditConfig instead of calling this
      */
     public function setAuditFormat(string $auditFormat): self
     {
         $this->auditFormat = $auditFormat;
+        $this->auditConfig = null; // Invalidate cached config
+
+        return $this;
+    }
+
+    /**
+     * Sets a custom AuditConfig to override the default configuration from Config
+     */
+    public function setAuditConfig(AuditConfig $auditConfig): self
+    {
+        $this->auditConfig = $auditConfig;
 
         return $this;
     }

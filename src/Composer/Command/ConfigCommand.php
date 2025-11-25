@@ -34,7 +34,7 @@ use Composer\Package\BasePackage;
  * @author Joshua Estes <Joshua.Estes@iostudio.com>
  * @author Jordi Boggiano <j.boggiano@seld.be>
  */
-class ConfigCommand extends BaseCommand
+class ConfigCommand extends BaseConfigCommand
 {
     /**
      * List of additional configurable package-properties
@@ -55,21 +55,6 @@ class ConfigCommand extends BaseCommand
         'suggest',
         'extra',
     ];
-
-    /**
-     * @var Config
-     */
-    protected $config;
-
-    /**
-     * @var JsonFile
-     */
-    protected $configFile;
-
-    /**
-     * @var JsonConfigSource
-     */
-    protected $configSource;
 
     /**
      * @var JsonFile
@@ -95,7 +80,7 @@ class ConfigCommand extends BaseCommand
                 new InputOption('file', 'f', InputOption::VALUE_REQUIRED, 'If you want to choose a different composer.json or config.json'),
                 new InputOption('absolute', null, InputOption::VALUE_NONE, 'Returns absolute paths when fetching *-dir config values instead of relative'),
                 new InputOption('json', 'j', InputOption::VALUE_NONE, 'JSON decode the setting value, to be used with extra.* keys'),
-                new InputOption('merge', 'm', InputOption::VALUE_NONE, 'Merge the setting value with the current value, to be used with extra.* keys in combination with --json'),
+                new InputOption('merge', 'm', InputOption::VALUE_NONE, 'Merge the setting value with the current value, to be used with extra.* or audit.ignore[-abandoned] keys in combination with --json'),
                 new InputOption('append', null, InputOption::VALUE_NONE, 'When adding a repository, append it (lowest priority) to the existing ones instead of prepending it (highest priority)'),
                 new InputOption('source', null, InputOption::VALUE_NONE, 'Display where the config value is loaded from'),
                 new InputArgument('setting-key', null, 'Setting key', null, $this->suggestSettingKeys()),
@@ -176,51 +161,16 @@ EOT
     {
         parent::initialize($input, $output);
 
-        if ($input->getOption('global') && null !== $input->getOption('file')) {
-            throw new \RuntimeException('--file and --global can not be combined');
-        }
-
-        $io = $this->getIO();
-        $this->config = Factory::createConfig($io);
-
-        // When using --global flag, set baseDir to home directory for correct absolute path resolution
-        if ($input->getOption('global')) {
-            $this->config->setBaseDir($this->config->get('home'));
-        }
-
-        $configFile = $this->getComposerConfigFile($input, $this->config);
-
-        // Create global composer.json if this was invoked using `composer global config`
-        if (
-            ($configFile === 'composer.json' || $configFile === './composer.json')
-            && !file_exists($configFile)
-            && realpath(Platform::getCwd()) === realpath($this->config->get('home'))
-        ) {
-            file_put_contents($configFile, "{\n}\n");
-        }
-
-        $this->configFile = new JsonFile($configFile, null, $io);
-        $this->configSource = new JsonConfigSource($this->configFile);
-
         $authConfigFile = $this->getAuthConfigFile($input, $this->config);
 
-        $this->authConfigFile = new JsonFile($authConfigFile, null, $io);
+        $this->authConfigFile = new JsonFile($authConfigFile, null, $this->getIO());
         $this->authConfigSource = new JsonConfigSource($this->authConfigFile, true);
 
         // Initialize the global file if it's not there, ignoring any warnings or notices
-        if ($input->getOption('global') && !$this->configFile->exists()) {
-            touch($this->configFile->getPath());
-            $this->configFile->write(['config' => new \ArrayObject]);
-            Silencer::call('chmod', $this->configFile->getPath(), 0600);
-        }
         if ($input->getOption('global') && !$this->authConfigFile->exists()) {
             touch($this->authConfigFile->getPath());
-            $this->authConfigFile->write(['bitbucket-oauth' => new \ArrayObject, 'github-oauth' => new \ArrayObject, 'gitlab-oauth' => new \ArrayObject, 'gitlab-token' => new \ArrayObject, 'http-basic' => new \ArrayObject, 'bearer' => new \ArrayObject]);
+            $this->authConfigFile->write(['bitbucket-oauth' => new \ArrayObject, 'github-oauth' => new \ArrayObject, 'gitlab-oauth' => new \ArrayObject, 'gitlab-token' => new \ArrayObject, 'http-basic' => new \ArrayObject, 'bearer' => new \ArrayObject, 'forgejo-token' => new \ArrayObject()]);
             Silencer::call('chmod', $this->authConfigFile->getPath(), 0600);
-        }
-
-        if (!$this->configFile->exists()) {
-            throw new \RuntimeException(sprintf('File "%s" cannot be found in the current directory', $configFile));
         }
     }
 
@@ -539,6 +489,9 @@ EOT
                     return $val;
                 },
             ],
+            'audit.ignore-unreachable' => [$booleanValidator, $booleanNormalizer],
+            'audit.block-insecure' => [$booleanValidator, $booleanNormalizer],
+            'audit.block-abandoned' => [$booleanValidator, $booleanNormalizer],
         ];
         $multiConfigValues = [
             'github-protocols' => [
@@ -583,10 +536,16 @@ EOT
                     return $vals;
                 },
             ],
-            'audit.ignore' => [
+            'audit.ignore-severity' => [
                 static function ($vals) {
                     if (!is_array($vals)) {
                         return 'array expected';
+                    }
+
+                    foreach ($vals as $val) {
+                        if (!in_array($val, ['low', 'medium', 'high', 'critical'], true)) {
+                            return 'valid severities include: low, medium, high, critical';
+                        }
                     }
 
                     return true;
@@ -843,8 +802,46 @@ EOT
             return 0;
         }
 
+        // handle audit.ignore and audit.ignore-abandoned with --merge support
+        if (in_array($settingKey, ['audit.ignore', 'audit.ignore-abandoned'], true)) {
+            if ($input->getOption('unset')) {
+                $this->configSource->removeConfigSetting($settingKey);
+
+                return 0;
+            }
+
+            $value = $values;
+            if ($input->getOption('json')) {
+                $value = JsonFile::parseJson($values[0]);
+                if (!is_array($value)) {
+                    throw new \RuntimeException('Expected an array or object for '.$settingKey);
+                }
+            }
+
+            if ($input->getOption('merge')) {
+                $currentConfig = $this->configFile->read();
+                $currentValue = $currentConfig['config']['audit'][str_replace('audit.', '', $settingKey)] ?? null;
+
+                if ($currentValue !== null && is_array($currentValue) && is_array($value)) {
+                    if (array_is_list($currentValue) && array_is_list($value)) {
+                        // Both are lists, merge them
+                        $value = array_merge($currentValue, $value);
+                    } elseif (!array_is_list($currentValue) && !array_is_list($value)) {
+                        // Both are associative arrays (objects), merge them
+                        $value = $value + $currentValue;
+                    } else {
+                        throw new \RuntimeException('Cannot merge array and object for '.$settingKey);
+                    }
+                }
+            }
+
+            $this->configSource->addConfigSetting($settingKey, $value);
+
+            return 0;
+        }
+
         // handle auth
-        if (Preg::isMatch('/^(bitbucket-oauth|github-oauth|gitlab-oauth|gitlab-token|http-basic|custom-headers|bearer)\.(.+)/', $settingKey, $matches)) {
+        if (Preg::isMatch('/^(bitbucket-oauth|github-oauth|gitlab-oauth|gitlab-token|http-basic|custom-headers|bearer|forgejo-token)\.(.+)/', $settingKey, $matches)) {
             if ($input->getOption('unset')) {
                 $this->authConfigSource->removeConfigSetting($matches[1].'.'.$matches[2]);
                 $this->configSource->removeConfigSetting($matches[1].'.'.$matches[2]);
@@ -895,6 +892,12 @@ EOT
 
                 $this->configSource->removeConfigSetting($matches[1].'.'.$matches[2]);
                 $this->authConfigSource->addConfigSetting($matches[1].'.'.$matches[2], $formattedHeaders);
+            } elseif ($matches[1] === 'forgejo-token') {
+                if (2 !== count($values)) {
+                    throw new \RuntimeException('Expected two arguments (username, access token), got '.count($values));
+                }
+                $this->configSource->removeConfigSetting($matches[1].'.'.$matches[2]);
+                $this->authConfigSource->addConfigSetting($matches[1].'.'.$matches[2], ['username' => $values[0], 'token' => $values[1]]);
             }
 
             return 0;
@@ -1027,29 +1030,6 @@ EOT
                 $io->write('[<fg=yellow;href=' . $link .'>' . $k . $key . '</>] <info>' . $value . '</info>' . $source, true, IOInterface::QUIET);
             }
         }
-    }
-
-    /**
-     * Get the local composer.json, global config.json, or the file passed by the user
-     */
-    private function getComposerConfigFile(InputInterface $input, Config $config): string
-    {
-        return $input->getOption('global')
-            ? ($config->get('home') . '/config.json')
-            : ($input->getOption('file') ?: Factory::getComposerFile())
-        ;
-    }
-
-    /**
-     * Get the local auth.json or global auth.json, or if the user passed in a file to use,
-     * the corresponding auth.json
-     */
-    private function getAuthConfigFile(InputInterface $input, Config $config): string
-    {
-        return $input->getOption('global')
-            ? ($config->get('home') . '/auth.json')
-            : dirname($this->getComposerConfigFile($input, $config)) . '/auth.json'
-        ;
     }
 
     /**

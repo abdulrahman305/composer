@@ -392,7 +392,7 @@ class Application extends BaseApplication
                                         $cmd->setName($script); //override it with the defined script name
                                     }
 
-                                    if ($cmd->getDescription() === '') {
+                                    if ($cmd->getDescription() === '' && is_string($description)) {
                                         $cmd->setDescription($description);
                                     }
                                 } else {
@@ -654,6 +654,7 @@ class Application extends BaseApplication
             new Command\FundCommand(),
             new Command\ReinstallCommand(),
             new Command\BumpCommand(),
+            new Command\RepositoryCommand(),
             new Command\SelfUpdateCommand(),
         ]);
     }

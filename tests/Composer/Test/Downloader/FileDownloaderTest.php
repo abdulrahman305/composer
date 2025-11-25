@@ -21,7 +21,7 @@ use Composer\Util\Filesystem;
 use Composer\Util\Http\Response;
 use Composer\Util\Loop;
 use Composer\Config;
-use Composer\Composer;
+use Composer\PartialComposer;
 
 class FileDownloaderTest extends TestCase
 {
@@ -150,7 +150,7 @@ class FileDownloaderTest extends TestCase
             'bin-dir' => $path.'/vendor/bin',
         ]);
 
-        $composer = new Composer;
+        $composer = new PartialComposer;
         $composer->setPackage($rootPackage);
         $composer->setConfig($config);
 
@@ -233,7 +233,7 @@ class FileDownloaderTest extends TestCase
             'bin-dir' => $path.'/vendor/bin',
         ]);
 
-        $composer = new Composer;
+        $composer = new PartialComposer;
         $composer->setPackage($rootPackage);
         $composer->setConfig($config);
 

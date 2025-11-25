@@ -115,11 +115,16 @@ optionally be an object with package name patterns for keys for more granular in
 
 ## audit
 
-Security audit configuration options
+Security audit and version blocking configuration options. Audit reports can be generated with `composer audit`
+and short format versions are automatically reported at the end of update or require commands. Version blocking
+discards package versions identified as insecure or abandoned, depending on configuration, before resolving
+dependencies, ensuring they cannot be installed.
 
 ### ignore
 
-A list of advisory ids, remote ids or CVE ids that are reported but let the audit command pass.
+A list of advisory ids, remote ids, CVE ids or package names (not recommended) that are ignored in audit reports and/or version blocking.
+
+#### Simple format with reasons:
 
 ```json
 {
@@ -135,7 +140,7 @@ A list of advisory ids, remote ids or CVE ids that are reported but let the audi
 }
 ```
 
-or
+#### Simple format without reasons:
 
 ```json
 {
@@ -147,13 +152,49 @@ or
 }
 ```
 
+#### Detailed format with apply scope:
+
+The detailed format allows you to control whether an ignore applies to audit reports only, version blocking only, or both. The `apply` field accepts:
+- `audit` - Only ignore for audit reports (advisory doesn't appear in audit reports, but package is still blocked during updates)
+- `block` - Only ignore for version blocking (package can be used during updates, but advisory still appears in audit reports)
+- `all` - Ignore during audit reports and version blocking (default behavior)
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore": {
+                "CVE-1234": {
+                    "apply": "audit",
+                    "reason": "Not applicable to us, so don't report, but still want to make sure we don't use this version in updates."
+                },
+                "GHSA-xx": {
+                    "apply": "block",
+                    "reason": "Workaround applied, can only fix next week, allow during updates but still report in audits"
+                },
+                "PKSA-yy": {
+                    "apply": "all",
+                    "reason": "False report, Ignore completely in all contexts"
+                }
+            }
+        }
+    }
+}
+```
+
+All formats can be mixed together in the same configuration.
+
 ### abandoned
 
-Defaults to `report` in Composer 2.6, and defaults to `fail` from Composer 2.7 on. Defines whether the audit command reports abandoned packages or not, this has three possible values:
+Defaults to `fail` since Composer 2.7 (defaulted to `report` in Composer 2.6 that added the option). Defines whether and how audit reports should report abandoned packages. There are three possible values:
 
-- `ignore` means the audit command does not consider abandoned packages at all.
-- `report` means abandoned packages are reported as an error but do not cause the command to exit with a non-zero code.
-- `fail` means abandoned packages will cause audits to fail with a non-zero code.
+- `ignore` means audit reports do not consider abandoned packages at all.
+- `report` means abandoned packages are reported as an error but do not cause the composer audit command return a non-zero exit code.
+- `fail` means abandoned packages will cause the audit command to fail with a non-zero exit code.
+
+Note, that this only applies to audit reports, this setting does not impact the blocking of insecure
+package versions. To configure blocking of abandoned packages, see the [`block-abandoned`](#block-abandoned)
+option.
 
 ```json
 {
@@ -171,6 +212,155 @@ Since Composer 2.8, the option can be overridden via the
 [`--abandoned`](03-cli.md#audit) command line option, which overrides both the
 config value and the environment variable.
 
+### ignore-abandoned
+
+A list of abandoned package names that are ignored for audit reports and/or version blocking. Allows you to select packages that you want to keep
+using despite their abandoned state.
+
+#### Simple format with reasons:
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore-abandoned": {
+                "acme/*": "Work scheduled for removal next month.",
+                "acme/package": "Transitive dependency but unreachable and not in active use within our project context."
+            }
+        }
+    }
+}
+```
+
+#### Simple format without reasons:
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore-abandoned": ["acme/*", "acme/package"]
+        }
+    }
+}
+```
+
+#### Detailed format with apply scope:
+
+The detailed format allows you to control whether an ignore applies to audit reports only, version blocking only, or both. The `apply` field accepts:
+- `audit` - Only ignore for audit reports (package doesn't appear in audit reports, but is still blocked during updates if [`block-abandoned`](#block-abandoned) is enabled)
+- `block` - Only ignore for version blocking (package can be used during updates even if [`block-abandoned`](#block-abandoned) is enabled, but still appears in audit reports)
+- `all` - Ignore for audit reports and version blocking (default behavior)
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore-abandoned": {
+                "acme/package": {
+                    "apply": "block",
+                    "reason": "Allow during updates but still report as abandoned"
+                },
+                "vendor/*": {
+                    "apply": "all",
+                    "reason": "We maintain these packages internally"
+                }
+            }
+        }
+    }
+}
+```
+
+All formats can be mixed together in the same configuration.
+
+### ignore-severity
+
+Defaults to `[]`. A list of severity levels that are ignored for audit reports and/or version blocking.
+
+#### Simple format:
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore-severity": ["low", "medium"]
+        }
+    }
+}
+```
+
+#### Detailed format with apply scope:
+
+The detailed format allows you to control whether an ignore applies to audit reports only, version blocking only, or both. The `apply` field accepts:
+- `audit` - Only ignore for audit reports (advisories with this severity don't appear in audit reports, but packages are still blocked during updates)
+- `block` - Only ignore for version blocking (packages can be used during updates, but advisories with this severity still appear in audit reports)
+- `all` - Ignore during both auditing and blocking (default behavior)
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore-severity": {
+                "low": {
+                    "apply": "all"
+                },
+                "medium": {
+                    "apply": "block"
+                }
+            }
+        }
+    }
+}
+```
+
+All formats can be mixed together in the same configuration.
+
+### ignore-unreachable
+
+Defaults to `false`. Should unreachable repositories be ignored during a `composer audit`. This can be helpful if you are running the command
+in an environment from which not all repositories can be accessed. This setting does not apply to version blocking or audit reports generated
+in other places than the `compoder audit` command.
+
+```json
+{
+    "config": {
+        "audit": {
+            "ignore-unreachable": true
+        }
+    }
+}
+```
+
+### block-insecure
+
+Defaults to `true`. If `true`, any package versions affected by security advisories will be blocked and cannot be used
+during a composer update/require/delete commands, unless the security advisories are ignored. If [`block-abandoned`](#block-abandoned) is
+enabled, version blocking will also prevent use of abandoned packages.
+
+```json
+{
+    "config": {
+        "audit": {
+            "block-insecure": false
+        }
+    }
+}
+```
+
+### block-abandoned
+
+Defaults to `false`. If `true`, any abandoned packages cannot be used during a composer update/required/delete command. Only applies if
+version blocking is not disabled by setting [`block-insecure`](#block-insecure) to false.
+
+
+```json
+{
+    "config": {
+        "audit": {
+            "block-abandoned": true
+        }
+    }
+}
+```
 
 ## use-parent-dir
 
@@ -245,6 +435,22 @@ private repositories which will later be cloned in GitLab CI jobs with a
 [GitLab CI_JOB_TOKEN](https://docs.gitlab.com/ee/ci/variables/predefined_variables.html#predefined-variables-reference)
 using HTTP basic auth. By default, Composer will generate a git-over-SSH
 URL for private repositories and HTTP(S) only for public.
+
+## forgejo-domains
+
+Defaults to `["codeberg.org"]`. A list of domains of Forgejo servers.
+This is used if you use the `forgejo` repository type.
+
+## forgejo-token
+
+A list of domain names and username/access-tokens to authenticate against them. For
+example using `{"codeberg.org": {"username": "forgejo-user", "token": "access-token"}}` as the
+value of this option will let Composer authenticate against codeberg.org.
+Please note: If the package is not hosted at
+codeberg.org the domain names must be also specified with the
+[`forgejo-domains`](06-config.md#forgejo-domains) option.
+Further info can also be found [here](articles/authentication-for-private-packages.md#forgejo-token)
+
 
 ## disable-tls
 

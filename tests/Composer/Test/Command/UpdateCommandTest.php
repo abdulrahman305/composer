@@ -144,7 +144,7 @@ Package operations: 2 installs, 0 updates, 0 removals
 Bumping dependencies
 <warning>Warning: Bumping dependency constraints is not recommended for libraries as it will narrow down your dependencies and may cause problems for your users.</warning>
 <warning>If your package is not a library, you can explicitly specify the "type" by using "composer config type project".</warning>
-<warning>Alternatively you can use --dev-only to only bump dependencies within "require-dev".</warning>
+<warning>Alternatively you can use --bump-after-update=dev to only bump dependencies within "require-dev".</warning>
 No requirements to update in ./composer.json.
 OUTPUT
             , true,
@@ -412,5 +412,64 @@ Package operations: 0 installs, 1 update, 0 removals
   - Upgrading dep/pkg (1.0.1 => 1.0.2)
 OUTPUT
         ];
+    }
+
+    public function testNoSecurityBlockingAllowsInsecurePackages(): void
+    {
+        $this->initTempComposer([
+            'repositories' => [
+                'packages' => [
+                    'type' => 'package',
+                    'package' => [
+                        ['name' => 'vulnerable/pkg', 'version' => '1.0.0'],
+                        ['name' => 'vulnerable/pkg', 'version' => '1.1.0'],
+                    ],
+                    'security-advisories' => [
+                        'vulnerable/pkg' => [
+                            [
+                                'advisoryId' => 'PKSA-test-001',
+                                'packageName' => 'vulnerable/pkg',
+                                'remoteId' => 'CVE-2024-1234',
+                                'title' => 'Test Security Vulnerability',
+                                'link' => 'https://example.com/advisory',
+                                'cve' => 'CVE-2024-1234',
+                                'affectedVersions' => '>=1.1.0,<2.0.0',
+                                'source' => 'test',
+                                'reportedAt' => '2024-01-01 00:00:00',
+                                'composerRepository' => 'Package Repository',
+                                'severity' => 'high',
+                                'sources' => [
+                                    [
+                                        'name' => 'test',
+                                        'remoteId' => 'CVE-2024-1234',
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+            'require' => [
+                'vulnerable/pkg' => '^1.0',
+            ],
+        ]);
+
+        // Test 1: Without --no-security-blocking, the vulnerable version 1.1.0 should be filtered out
+        $appTester = $this->getApplicationTester();
+        $appTester->run(['command' => 'update', '--dry-run' => true, '--no-audit' => true, '--no-install' => true]);
+
+        $display = $appTester->getDisplay(true);
+        // Should lock the secure version 1.0.0, not the vulnerable 1.1.0
+        self::assertStringContainsString('Locking vulnerable/pkg (1.0.0)', $display);
+        self::assertStringNotContainsString('Locking vulnerable/pkg (1.1.0)', $display);
+
+        // Test 2: With --no-security-blocking, the vulnerable version 1.1.0 should be allowed
+        $appTester = $this->getApplicationTester();
+        $appTester->run(['command' => 'update', '--dry-run' => true, '--no-audit' => true, '--no-install' => true, '--no-security-blocking' => true]);
+
+        $display = $appTester->getDisplay(true);
+        // Should lock the latest version 1.1.0 even though it's vulnerable
+        self::assertStringContainsString('Locking vulnerable/pkg (1.1.0)', $display);
+        self::assertStringNotContainsString('Locking vulnerable/pkg (1.0.0)', $display);
     }
 }

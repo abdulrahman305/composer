@@ -198,6 +198,7 @@ php composer.phar update vendor/package:2.0.1 vendor/package2:3.0.*
 * **--no-install:** Does not run the install step after updating the composer.lock file.
 * **--no-audit:** Does not run the audit steps after updating the composer.lock file. Also see [COMPOSER_NO_AUDIT](#composer-no-audit).
 * **--audit-format:** Audit output format. Must be "table", "plain", "json", or "summary" (default).
+* **--no-security-blocking:** Allows installing packages with security advisories or that are abandoned. Also see [COMPOSER_NO_SECURITY_BLOCKING](#composer-no-security-blocking).
 * **--lock:** Overwrites the lock file hash to suppress warning about the lock file being out of
   date without updating package versions. Package metadata like mirrors and URLs are updated if
   they changed.
@@ -290,6 +291,7 @@ If you do not want to install the new dependencies immediately you can call it w
 * **--no-install:** Does not run the install step after updating the composer.lock file.
 * **--no-audit:** Does not run the audit steps after updating the composer.lock file. Also see [COMPOSER_NO_AUDIT](#composer-no-audit).
 * **--audit-format:** Audit output format. Must be "table", "plain", "json", or "summary" (default).
+* **--no-security-blocking:** Allows installing packages with security advisories or that are abandoned. Also see [COMPOSER_NO_SECURITY_BLOCKING](#composer-no-security-blocking).
 * **--update-no-dev:** Run the dependency update with the `--no-dev` option. Also see [COMPOSER_NO_DEV](#composer-no-dev).
 * **--update-with-dependencies (-w):** Also update dependencies of the newly required packages, except those that are root requirements. Can also be set via the COMPOSER_WITH_DEPENDENCIES=1 env var.
 * **--update-with-all-dependencies (-W):** Also update dependencies of the newly required packages, including those that are root requirements. Can also be set via the COMPOSER_WITH_ALL_DEPENDENCIES=1 env var.
@@ -331,7 +333,7 @@ uninstalled.
 
 ### Options
 
-* **--unused** Remove unused packages that are not a direct or indirect dependency (anymore)
+* **--unused:** Remove unused packages that are not a direct or indirect dependency (anymore).
 * **--dev:** Remove packages from `require-dev`.
 * **--dry-run:** Simulate the command without actually doing anything.
 * **--no-progress:** Removes the progress display that can mess with some
@@ -340,6 +342,7 @@ uninstalled.
 * **--no-install:** Does not run the install step after updating the composer.lock file.
 * **--no-audit:** Does not run the audit steps after installation is complete. Also see [COMPOSER_NO_AUDIT](#composer-no-audit).
 * **--audit-format:** Audit output format. Must be "table", "plain", "json", or "summary" (default).
+* **--no-security-blocking:** Allows installing packages with security advisories or that are abandoned. Also see [COMPOSER_NO_SECURITY_BLOCKING](#composer-no-security-blocking).
 * **--update-no-dev:** Run the dependency update with the --no-dev option. Also see [COMPOSER_NO_DEV](#composer-no-dev).
 * **--update-with-dependencies (-w):** Also update dependencies of the removed packages. Can also be set via the COMPOSER_WITH_DEPENDENCIES=1 env var.
   (Deprecated, is now default behavior)
@@ -892,6 +895,47 @@ to edit extra fields as json:
 php composer.phar config --json extra.foo.bar '{"baz": true, "qux": []}'
 ```
 
+## repository / repo
+
+The `repo` command lets you manage repositories in your `composer.json`. It is more powerful and recommended over using `composer config repositories.*` to manipulate the repositories configuration. Refer to [Repositories](05-repositories.md) documentation for details on the available types and configuration options.
+
+### Usage
+
+```shell
+repo [options] list
+repo [options] add [repo-name] [repo-type] [url]
+repo [options] add [repo-name] [json-repo-definition]
+repo [options] remove [repo-name]
+repo [options] set-url [repo-name] [url]
+repo [options] get-url [repo-name]
+repo [options] enable packagist.org
+repo [options] disable packagist.org
+```
+
+### Options
+
+- **--global (-g):** to modify the global `$COMPOSER_HOME/config.json`.
+- **--file (-f):** to modify a specific file instead of composer.json.
+- **--append:** to add a repository with lower priority (by default repositories are prepended and have thus higher priority than existing ones).
+- **--before <name>:** to insert the new repository before an existing repository named `<name>`.
+- **--after <name>:** to insert the new repository after an existing repository named `<name>`. The `<name>` must match an existing repository name.
+
+### Examples
+
+```shell
+php composer.phar repo list
+php composer.phar repo add foo vcs https://github.com/acme/foo
+php composer.phar repo add bar composer https://repo.packagist.com/bar
+php composer.phar repo add zips '{"type":"artifact","url":"/path/to/dir/with/zips"}'
+php composer.phar repo add baz vcs https://example.org --before foo
+php composer.phar repo add qux vcs https://example.org --after bar
+php composer.phar repo remove foo
+php composer.phar repo set-url foo https://git.example.org/acme/foo
+php composer.phar repo get-url foo
+php composer.phar repo disable packagist.org
+php composer.phar repo enable packagist.org
+```
+
 ## create-project
 
 You can use Composer to create new projects from an existing package. This is
@@ -954,6 +998,7 @@ By default the command checks for the packages on packagist.org.
 * **--no-install:** Disables installation of the vendors.
 * **--no-audit:** Does not run the audit steps after installation is complete. Also see [COMPOSER_NO_AUDIT](#composer-no-audit).
 * **--audit-format:** Audit output format. Must be "table", "plain", "json", or "summary" (default).
+* **--no-security-blocking:** Allows installing packages with security advisories or that are abandoned. Also see [COMPOSER_NO_SECURITY_BLOCKING](#composer-no-security-blocking).
 * **--ignore-platform-reqs:** ignore all platform requirements (`php`, `hhvm`,
   `lib-*` and `ext-*`) and force the installation even if the local machine does
   not fulfill these.
@@ -1016,10 +1061,14 @@ Lists the name, version and license of every package installed. Use
 
 ### Options
 
-* **--format:** Format of the output: text, json or summary (default: "text")
-* **--no-dev:** Remove dev dependencies from the output
+* **--locked:** List licenses from the lock file, regardless of what is currently in vendor dir.
+* **--format:** Format of the output: text, json or summary (default: "text").
+* **--no-dev:** Remove dev dependencies from the output.
 
 ## run-script / run
+
+To run [scripts](articles/scripts.md) manually you can use this command,
+give it the script name and optionally any required arguments.
 
 ### Options
 
@@ -1027,9 +1076,6 @@ Lists the name, version and license of every package installed. Use
 * **--dev:** Sets the dev mode.
 * **--no-dev:** Disable dev mode.
 * **--list (-l):** List user defined scripts.
-
-To run [scripts](articles/scripts.md) manually you can use this command,
-give it the script name and optionally any required arguments.
 
 ## exec
 
@@ -1093,7 +1139,7 @@ php composer.phar audit
 * **--format (-f):** Audit output format. Must be "table" (default), "plain", "json", or "summary".
 * **--locked:** Audit packages from the lock file, regardless of what is currently in vendor dir.
 * **--abandoned:** Behavior on abandoned packages. Must be "ignore", "report",
-  or "fail".  See also [audit.abandoned](06-config.md#abandoned).  Passing this
+  or "fail".  See also [config.audit.abandoned](06-config.md#abandoned).  Passing this
   flag will override the config value and the environment variable.
 * **--ignore-severity:** Ignore advisories of a certain severity level. Can be passed one or more
   time to ignore multiple severities.
@@ -1261,11 +1307,6 @@ being found during installation even though they should be present.
 See the [proxy documentation](faqs/how-to-use-composer-behind-a-proxy.md) for more details
 on how to use proxy env vars.
 
-### COMPOSER_AUDIT_ABANDONED
-
-Set to `ignore`, `report` or `fail` to override the [audit.abandoned](06-config.md#abandoned)
-config option.
-
 ### COMPOSER_MAX_PARALLEL_HTTP
 
 Set to an integer to configure how many files can be downloaded in parallel. This
@@ -1306,7 +1347,20 @@ Accepts a comma-seperated list of event names, e.g. `post-install-cmd` for which
 
 ### COMPOSER_NO_AUDIT
 
-If set to `1`, it is the equivalent of passing the `--no-audit` option to `require`, `update`, `remove` or `create-project` command.
+If set to `1`, it is the equivalent of passing the `--no-audit` option to a `require`, `update`, `remove` or `create-project` command.
+
+### COMPOSER_AUDIT_ABANDONED
+
+Set to `ignore`, `report` or `fail` to override the [audit.abandoned](06-config.md#abandoned)
+config option.
+
+### COMPOSER_NO_SECURITY_BLOCKING
+
+If set to `1`, it is the equivalent of passing the `--no-security-blocking` option to a `require`, `update`, `remove`, or `create-project` command. This allows installing packages with security advisories or that are abandoned. It overrides the config option [audit.block-insecure](06-config.md#block-insecure).
+
+### COMPOSER_SECURITY_BLOCKING_ABANDONED
+
+If set to `1`, enables blocking of abandoned packages during dependency resolution (equivalent to setting `audit.block-abandoned` config to `true`). If set to `0`, disables blocking of abandoned packages. Note that this setting does not have any effect if security blocking is generally disabled. It overrides the config option [audit.block-abandoned](06-config.md#block-abandoned).
 
 ### COMPOSER_NO_DEV
 
@@ -1323,6 +1377,14 @@ If set to `1`, it is the equivalent of passing the `--prefer-stable` option to
 
 If set to `1`, it is the equivalent of passing the `--prefer-lowest` option to
 `update` or `require`.
+
+### COMPOSER_PREFER_DEV_OVER_PRERELEASE
+
+If set to `1`, when resolving dependencies with both `--prefer-stable` and
+`--prefer-lowest` enabled, dev versions are treated as more stable than
+alpha/beta/RC versions in cases where no stable release exists. This is useful
+to test lowest versions while still preferring branches that may contain
+critical fixes over prerelease versions.
 
 ### COMPOSER_MINIMAL_CHANGES
 
